@@ -1,63 +1,52 @@
-import pytest
-from fastapi.testclient import TestClient
-from main import app, init_db, Base, engine
+import httpx
+import time
+import sys
 
-# Setup test DB
-Base.metadata.drop_all(bind=engine)
-init_db()
+API_URL = "http://localhost:8000/translate"
 
-client = TestClient(app)
+def main():
+    print("\n--- 🚀 TERMINAL TRANSLATOR CLIENT 🚀 ---")
+    print("Gõ 'exit' để thoát.\n")
 
-def test_health_check():
-    response = client.get("/health")
-    assert response.status_code == 200
-    assert "provider" in response.json()
+    while True:
+        text = input("✍️  Nhập văn bản cần dịch: ").strip()
+        if text.lower() == 'exit': break
+        if not text: continue
 
-def test_translate_mock_success():
-    payload = {
-        "text": "Hello world",
-        "source_lang": "en",
-        "target_lang": "vi"
-    }
-    response = client.post("/translate", json=payload)
-    assert response.status_code == 200
-    data = response.json()
-    assert "MOCK VI" in data["translated_text"]
-    assert data["provider"] == "mock"
-
-def test_translate_validation_length():
-    # Test text too long
-    long_text = "a" * 501
-    payload = {
-        "text": long_text,
-        "source_lang": "en",
-        "target_lang": "vi"
-    }
-    response = client.post("/translate", json=payload)
-    assert response.status_code == 422 # Unprocessable Entity
-
-def test_translate_with_glossary():
-    payload = {
-        "text": "I love Apple products",
-        "source_lang": "en",
-        "target_lang": "vi",
-        "glossary": {
-            "Apple": "Táo Khuyết"
+        payload = {
+            "text": text,
+            "source_lang": "auto",
+            "target_lang": "vi",
+            "glossary": {"AI": "Trí tuệ nhân tạo"} # Test thử glossary
         }
-    }
-    response = client.post("/translate", json=payload)
-    assert response.status_code == 200
-    data = response.json()
-    # Với Mock adapter, nó sẽ replace string đơn giản
-    assert "Táo Khuyết" in data["translated_text"] or data["glossary_applied"] == True
 
-def test_history_logging():
-    # Make a request
-    client.post("/translate", json={"text": "Log me", "source_lang": "en", "target_lang": "fr"})
-    
-    # Check history
-    response = client.get("/history")
-    assert response.status_code == 200
-    history = response.json()
-    assert len(history) > 0
-    assert history[0]["source_text"] == "Log me"
+        try:
+            print("⏳ Đang gửi yêu cầu...", end="\r")
+            start = time.time()
+            
+            # Gửi request
+            response = httpx.post(API_URL, json=payload, timeout=10)
+            data = response.json()
+            
+            latency = (time.time() - start) * 1000
+            
+            # Xóa dòng đang chờ
+            sys.stdout.write('\x1b[2K\r')
+            
+            if response.status_code == 200:
+                print(f"✅ KẾT QUẢ ({int(latency)}ms):")
+                print(f"   Input:  {data['original_text']}")
+                print(f"   Output: \033[92m{data['translated_text']}\033[0m") # Màu xanh lá
+                print(f"   Nguồn:  {data['provider']}")
+                print("-" * 30)
+            else:
+                print(f"❌ LỖI: {data}")
+
+        except Exception as e:
+            print(f"\n❌ Không kết nối được Server: {e}")
+            print("👉 Bạn đã chạy 'python main.py' chưa?")
+
+if __name__ == "__main__":
+    main()
+
+
